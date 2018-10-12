@@ -6,6 +6,9 @@ bool NotOpreator(char c);
 bool Unit(char c);
 bool Character(char a, char b);
 bool String(char **e, char**r);
+bool LineEnd(char a);
+bool DSMatch(char **expr, char **regex);
+void Multiple(char **e, char **r);
 
 /*
  * << 正则表达式解析器 >>
@@ -30,7 +33,10 @@ bool String(char **e, char**r);
  *      也就是说对于任意的正则表达式expr 我们都存在有可以将其分解到最低层级expr(即基本的数据集形如s={a,b,c...})
  *      及相应的操作。由此我们利用分治法的思想将最低级表达式及其操作(expr + operation)与字符集(s)相匹配，继而向上冒泡
  *      完成正则匹配。
+ * 缺陷:
  *      这里并没有对正则表达式本身的语法进行深入的检查。
+ *      不考虑运算符的叠加例如: expr = c++
+ *      不考虑后表达式是前表达式的子表达式例如: expr = c+8
  * */
 
 /*
@@ -46,88 +52,81 @@ bool Match(char *expr, char *regex)
     }
     
     bool result = false;
+    char *dataset;
+    
     while (*regex != '\0') {
+        dataset = regex;                                    // 当前表达式数据集
+        result = DSMatch(&expr, &regex);
+        
+        if (*expr != '\0') expr++;
+        regex++;
+        
         switch (*regex) {
-            case 'c':
-                result = NotOpreator(*expr);
-                regex++;
-                break;
-            case '.':
-                result = Unit(*expr);
-                regex++;
-                break;
-            case '\\':
-                result = Character(*expr, *++regex);
-                regex++;
-                break;
-            case '\"':
-                result = String(&expr, &regex);
-                regex++;
-                break;
             case '*':
-//                result = Multiple(&expr, *regex);
-                break;
-            default:
-                result = Character(*expr, *regex);
+                if (result) Multiple(&expr, &dataset);
+                result = true;
                 regex++;
+                break;
+            case '+':
+                if(result) Multiple(&expr, &dataset);
+                regex++;
+            default:
                 break;
         }
         
         if (!result) return false;
-        switch (*regex) {
-            case '*':
-                result = Multiple(*expr, *regex);
-                break;
-            default:
-                break;
-        }
-        expr++;
     }
     
     if (*expr != '\0') {return false;}                      // 正则匹配完毕，表达式未完结则失败
     return result;
 }
 
-bool Multiple(char **expr, char *regex)
+/*
+ * 基本数据集匹配
+ * */
+bool DSMatch(char **expr, char **regex)
 {
-    dataset = DS(*(regex-1));
+    bool result = false;
+    static const char operators[] = {'*', '+', '?', '{', '}', '|', '(', ')', '/'};
     
-    while (**expr in dataset) {
-        *expr++;
+    switch (**regex) {
+        case 'c':
+            result = NotOpreator(**expr);
+            break;
+        case '.':
+            result = Unit(**expr);
+            break;
+        case '\\':
+            result = Character(**expr, *++(*regex));
+            break;
+        case '\"':
+            result = String(expr, regex);
+            break;
+        case '$':
+            result = LineEnd(**expr);
+            break;
+        default:
+            for (int i=0;i<sizeof(operators)/sizeof(operators[0]);i++) {
+                if (**regex == operators[i]) {
+                    printf("语法错误, 错误的表达式符号%c缺乏运算分量\n", operators[i]);
+                    exit(1);
+                }
+            }
+            
+            result = Character(**expr, **regex);
+            break;
     }
-    return true;
     
-    
+    return result;
 }
 
-
-bool *DS(char *r)
+void Multiple(char **e, char **r)
 {
-//    switch (*) {
-//        case 'c':
-//            return NotOpreator(*expr);
-//            break;
-//        case '.':
-//            return Unit(*expr);
-//            regex++;
-//            break;
-//        case '\\':
-//            result = Character(*expr, *++regex);
-//            regex++;
-//            break;
-//        case '\"':
-//            result = String(&expr, &regex);
-//            regex++;
-//            break;
-//        case '*':
-//            result = Multiple(&expr, *regex);
-//            break;
-//        default:
-//            result = Character(*expr, *regex);
-//            regex++;
-//            break;
-//    }
-    return false;
+    char *d = *r;
+    while (DSMatch(e, &d)) {
+        (*e)++;
+        d = *r;
+    }
 }
 
 /*
@@ -161,7 +160,10 @@ bool String(char **e, char **r)
     return result;
 }
 
-
+bool LineEnd(char a)
+{
+    return a == '\n';
+}
 
 bool Character(char a, char b)
 {
@@ -170,23 +172,22 @@ bool Character(char a, char b)
 
 bool NotOpreator(char c)
 {
-    const char C_Opreators[] = {'+', '-', '*', '/', '%'};
-    bool r = true;
+    const char C_Opreators[] = {'+', '-', '*', '/', '%', '\0'};
     
     for (int i=0;i<sizeof(C_Opreators)/sizeof(C_Opreators[0]);i++) {
         if (C_Opreators[i] == c) return false;
     }
-    return r;
+    return true;
 }
 
 bool Unit(char c)
 {
-    return c != '\n';
+    return c != '\n' && c != '\0';
 }
 
 int main()
 {
-    bool r = Match("\"s\"s", "\"s\"c");
+    bool r = Match("", "\"ss\"*");
     
     printf("%s \n", r ? "true" : "false");
 }
